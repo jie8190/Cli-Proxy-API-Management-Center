@@ -104,8 +104,10 @@ const normalizeApiKeyEntry = (entry: unknown): ApiKeyEntry | null => {
 
   const proxyUrl = record ? record['proxy-url'] ?? record.proxyUrl : undefined;
   const headers = record ? normalizeHeaders(record.headers) : undefined;
+  const name = record ? record.name ?? record.label ?? record['display-name'] : undefined;
 
   return {
+    name: name ? String(name).trim() : undefined,
     apiKey: trimmed,
     proxyUrl: proxyUrl ? String(proxyUrl) : undefined,
     headers

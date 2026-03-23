@@ -14,6 +14,12 @@ import { apiCallApi, getApiCallErrorMessage } from '@/services/api';
 import type { ApiKeyEntry } from '@/types';
 import { buildHeaderObject } from '@/utils/headers';
 import { buildApiKeyEntry, buildOpenAIChatCompletionsEndpoint } from '@/components/providers/utils';
+import {
+  buildOpenAIKeyNameId,
+  readOpenAIKeyNameMap,
+  resolveOpenAIKeyName,
+  writeOpenAIKeyNameMap,
+} from '@/utils/openaiKeyNames';
 import type { OpenAIEditOutletContext } from './AiProvidersOpenAIEditLayout';
 import type { KeyTestStatus } from '@/stores/useOpenAIEditDraftStore';
 import styles from './AiProvidersPage.module.scss';
@@ -126,6 +132,44 @@ export function AiProvidersOpenAIEditPage() {
 
   const swipeRef = useEdgeSwipeBack({ onBack: handleBack });
   const [isTestingKeys, setIsTestingKeys] = useState(false);
+  const [keyNameMap, setKeyNameMap] = useState(() => readOpenAIKeyNameMap());
+
+  const persistKeyName = useCallback(
+    (apiKey: string, name: string) => {
+      const id = buildOpenAIKeyNameId(form.name, form.baseUrl, apiKey);
+      if (!id) return;
+
+      const normalizedName = String(name || '').trim();
+      setKeyNameMap((prev) => {
+        const next = { ...prev };
+        if (normalizedName) {
+          if (next[id] === normalizedName) return prev;
+          next[id] = normalizedName;
+        } else {
+          if (!(id in next)) return prev;
+          delete next[id];
+        }
+        writeOpenAIKeyNameMap(next);
+        return next;
+      });
+    },
+    [form.baseUrl, form.name]
+  );
+
+  useEffect(() => {
+    if (!form.apiKeyEntries.length) return;
+    let changed = false;
+    const mergedEntries = form.apiKeyEntries.map((entry) => {
+      if (String(entry.name || '').trim()) return entry;
+      const storedName = resolveOpenAIKeyName(keyNameMap, form.name, form.baseUrl, entry.apiKey);
+      if (!storedName) return entry;
+      changed = true;
+      return { ...entry, name: storedName };
+    });
+    if (changed) {
+      setForm((prev) => ({ ...prev, apiKeyEntries: mergedEntries }));
+    }
+  }, [form.apiKeyEntries, form.baseUrl, form.name, keyNameMap, setForm]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -371,8 +415,22 @@ export function AiProvidersOpenAIEditPage() {
     const list = entries.length ? entries : [buildApiKeyEntry()];
 
     const updateEntry = (idx: number, field: keyof ApiKeyEntry, value: string) => {
-      const next = list.map((entry, i) => (i === idx ? { ...entry, [field]: value } : entry));
+      const next = list.map((entry, i) => {
+        if (i !== idx) return entry;
+        const nextEntry = { ...entry, [field]: value };
+        if (field === 'apiKey' && !String(nextEntry.name || '').trim()) {
+          const storedName = resolveOpenAIKeyName(keyNameMap, form.name, form.baseUrl, value);
+          if (storedName) {
+            nextEntry.name = storedName;
+          }
+        }
+        return nextEntry;
+      });
       setForm((prev) => ({ ...prev, apiKeyEntries: next }));
+      const updatedEntry = next[idx];
+      if (field === 'name' || field === 'apiKey') {
+        persistKeyName(updatedEntry?.apiKey ?? '', updatedEntry?.name ?? '');
+      }
       setDraftKeyTestStatus(idx, { status: 'idle', message: '' });
       setTestStatus('idle');
       setTestMessage('');
@@ -416,7 +474,7 @@ export function AiProvidersOpenAIEditPage() {
         <div className={styles.keyTableShell}>
           {/* 表头 */}
           <div className={styles.keyTableHeader}>
-            <div className={styles.keyTableColIndex}>#</div>
+            <div className={styles.keyTableColName}>{t('common.alias')}</div>
             <div className={styles.keyTableColStatus}>{t('common.status')}</div>
             <div className={styles.keyTableColKey}>{t('common.api_key')}</div>
             <div className={styles.keyTableColProxy}>{t('common.proxy_url')}</div>
@@ -431,7 +489,16 @@ export function AiProvidersOpenAIEditPage() {
             return (
               <div key={index} className={styles.keyTableRow}>
                 {/* 序号 */}
-                <div className={styles.keyTableColIndex}>{index + 1}</div>
+                <div className={styles.keyTableColName}>
+                  <input
+                    type="text"
+                    value={entry.name ?? ''}
+                    onChange={(e) => updateEntry(index, 'name', e.target.value)}
+                    disabled={saving || disableControls || isTestingKeys}
+                    className={`input ${styles.keyTableNameInput}`}
+                    placeholder={`#${index + 1}`}
+                  />
+                </div>
 
                 {/* 状态指示灯 */}
                 <div

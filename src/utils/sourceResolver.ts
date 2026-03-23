@@ -46,13 +46,23 @@ export function buildSourceInfoMap(input: SourceInfoMapInput): Map<string, Sourc
 
   // OpenAI 特殊处理：多 apiKeyEntries
   (input.openaiCompatibility || []).forEach((provider, providerIndex) => {
-    const displayName = provider.prefix?.trim() || provider.name || `OpenAI #${providerIndex + 1}`;
-    const candidates = new Set<string>();
-    buildCandidateUsageSourceIds({ prefix: provider.prefix }).forEach((id) => candidates.add(id));
-    (provider.apiKeyEntries || []).forEach((entry) => {
-      buildCandidateUsageSourceIds({ apiKey: entry.apiKey }).forEach((id) => candidates.add(id));
+    const providerDisplayName =
+      provider.prefix?.trim() || provider.name || `OpenAI #${providerIndex + 1}`;
+    registerCandidates(
+      providerDisplayName,
+      'openai',
+      buildCandidateUsageSourceIds({ prefix: provider.prefix })
+    );
+
+    const providerLabelBase = provider.name?.trim() || providerDisplayName;
+    (provider.apiKeyEntries || []).forEach((entry, entryIndex) => {
+      const entryDisplayName = entry.name?.trim() || `${providerLabelBase} Key #${entryIndex + 1}`;
+      registerCandidates(
+        entryDisplayName,
+        'openai',
+        buildCandidateUsageSourceIds({ apiKey: entry.apiKey })
+      );
     });
-    registerCandidates(displayName, 'openai', Array.from(candidates));
   });
 
   return map;

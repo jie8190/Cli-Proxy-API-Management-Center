@@ -90,16 +90,18 @@ const normalizeKeyHeaders = (headers: ApiKeyEntry['headers']) => {
 const normalizeApiKeyEntries = (entries: ApiKeyEntry[]) =>
   (entries ?? []).reduce<
     Array<{
+      name: string;
       apiKey: string;
       proxyUrl: string;
       headers: Array<{ key: string; value: string }>;
     }>
   >((acc, entry) => {
+    const name = String(entry?.name ?? '').trim();
     const apiKey = String(entry?.apiKey ?? '').trim();
     const proxyUrl = String(entry?.proxyUrl ?? '').trim();
     const headers = normalizeKeyHeaders(entry?.headers);
-    if (!apiKey && !proxyUrl && headers.length === 0) return acc;
-    acc.push({ apiKey, proxyUrl, headers });
+    if (!name && !apiKey && !proxyUrl && headers.length === 0) return acc;
+    acc.push({ name, apiKey, proxyUrl, headers });
     return acc;
   }, []);
 
@@ -407,6 +409,7 @@ export function AiProvidersOpenAIEditLayout() {
         baseUrl,
         headers: buildHeaderObject(form.headers),
         apiKeyEntries: form.apiKeyEntries.map((entry: ApiKeyEntry) => ({
+          name: entry.name?.trim() || undefined,
           apiKey: entry.apiKey.trim(),
           proxyUrl: entry.proxyUrl?.trim() || undefined,
           headers: entry.headers,

@@ -7,6 +7,7 @@ import iconOpenaiLight from '@/assets/icons/openai-light.svg';
 import iconOpenaiDark from '@/assets/icons/openai-dark.svg';
 import type { OpenAIProviderConfig } from '@/types';
 import { maskApiKey } from '@/utils/format';
+import { readOpenAIKeyNameMap, resolveOpenAIKeyName } from '@/utils/openaiKeyNames';
 import {
   buildCandidateUsageSourceIds,
   calculateStatusBarData,
@@ -45,6 +46,7 @@ export function OpenAISection({
 }: OpenAISectionProps) {
   const { t } = useTranslation();
   const actionsDisabled = disableControls || loading || isSwitching;
+  const keyNameMap = useMemo(() => readOpenAIKeyNameMap(), []);
 
   const statusBarCache = useMemo(() => {
     const cache = new Map<string, ReturnType<typeof calculateStatusBarData>>();
@@ -135,9 +137,15 @@ export function OpenAISection({
                     <div className={styles.apiKeyEntryList}>
                       {apiKeyEntries.map((entry, entryIndex) => {
                         const entryStats = getStatsBySource(entry.apiKey, keyStats);
+                        const displayName =
+                          entry.name?.trim() ||
+                          resolveOpenAIKeyName(keyNameMap, item.name, item.baseUrl, entry.apiKey);
                         return (
                           <div key={entryIndex} className={styles.apiKeyEntryCard}>
                             <span className={styles.apiKeyEntryIndex}>{entryIndex + 1}</span>
+                            {displayName && (
+                              <span className={styles.apiKeyEntryName}>{displayName}</span>
+                            )}
                             <span className={styles.apiKeyEntryKey}>{maskApiKey(entry.apiKey)}</span>
                             {entry.proxyUrl && (
                               <span className={styles.apiKeyEntryProxy}>{entry.proxyUrl}</span>

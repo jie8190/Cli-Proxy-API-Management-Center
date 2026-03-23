@@ -177,38 +177,24 @@ export function CredentialStatsCard({
       addConfigRow(c.apiKey, c.prefix, c.prefix?.trim() || `Vertex #${i + 1}`, 'vertex', `vertex:${i}`));
     // OpenAI compatibility providers — one row per provider, merged across all apiKey entries (prefix counted once).
     openaiProviders.forEach((provider, providerIndex) => {
-      const prefix = provider.prefix;
-      const displayName = prefix?.trim() || provider.name || `OpenAI #${providerIndex + 1}`;
+      const providerDisplayName =
+        provider.prefix?.trim() || provider.name || `OpenAI #${providerIndex + 1}`;
+      const providerLabelBase = provider.name?.trim() || providerDisplayName;
 
-      const candidates = new Set<string>();
-      buildCandidateUsageSourceIds({ prefix }).forEach((id) => candidates.add(id));
-      (provider.apiKeyEntries || []).forEach((entry) => {
-        buildCandidateUsageSourceIds({ apiKey: entry.apiKey }).forEach((id) => candidates.add(id));
+      (provider.apiKeyEntries || []).forEach((entry, entryIndex) => {
+        const entryDisplayName =
+          entry.name?.trim() || `${providerLabelBase} Key #${entryIndex + 1}`;
+        addConfigRow(
+          entry.apiKey,
+          undefined,
+          entryDisplayName,
+          'openai',
+          `openai:${providerIndex}:key:${entryIndex}`
+        );
       });
 
-      let success = 0;
-      let failure = 0;
-      candidates.forEach((id) => {
-        const bucket = bySource[id];
-        if (bucket) {
-          success += bucket.success;
-          failure += bucket.failure;
-          consumedSourceIds.add(id);
-        }
-      });
-
-      const total = success + failure;
-      if (total > 0) {
-        result.push({
-          key: `openai:${providerIndex}`,
-          displayName,
-          type: 'openai',
-          success,
-          failure,
-          total,
-          successRate: (success / total) * 100,
-        });
-      }
+      // Prefix-based sources cannot be mapped to one specific key, keep a provider-level fallback row.
+      addConfigRow('', provider.prefix, providerDisplayName, 'openai', `openai:${providerIndex}:prefix`);
     });
 
     // Remaining unmatched bySource entries — resolve name from auth files if possible

@@ -11,6 +11,7 @@ export interface ModelAlias {
 }
 
 export interface ApiKeyEntry {
+  name?: string;
   apiKey: string;
   proxyUrl?: string;
   headers?: Record<string, string>;

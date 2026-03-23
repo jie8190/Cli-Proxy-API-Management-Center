@@ -275,6 +275,19 @@
   word-break: break-all;
 }
 
+.apiKeyEntryName {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
 .apiKeyEntryProxy {
   color: var(--text-tertiary);
   font-size: 11px;
@@ -816,9 +829,9 @@
 // 表头
 .keyTableHeader {
   display: grid;
-  grid-template-columns: 46px 56px minmax(220px, 1.4fr) minmax(200px, 1.1fr) 180px;
+  grid-template-columns: minmax(120px, 0.9fr) 56px minmax(220px, 1.4fr) minmax(200px, 1.1fr) 180px;
   gap: $spacing-sm;
-  min-width: 760px;
+  min-width: 860px;
   padding: 10px $spacing-md;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
@@ -835,9 +848,9 @@
 // 数据行
 .keyTableRow {
   display: grid;
-  grid-template-columns: 46px 56px minmax(220px, 1.4fr) minmax(200px, 1.1fr) 180px;
+  grid-template-columns: minmax(120px, 0.9fr) 56px minmax(220px, 1.4fr) minmax(200px, 1.1fr) 180px;
   gap: $spacing-sm;
-  min-width: 760px;
+  min-width: 860px;
   padding: 10px $spacing-md;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -854,12 +867,11 @@
 }
 
 // 列定义
-.keyTableColIndex {
+.keyTableColName {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
-  color: var(--text-tertiary);
+  min-width: 0;
 }
 
 .keyTableColStatus {
@@ -893,6 +905,14 @@
   width: 100%;
   padding: 8px 10px;
   font-size: 14px;
+  min-height: 38px;
+  text-align: center;
+}
+
+.keyTableNameInput {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
   min-height: 38px;
   text-align: center;
 }
