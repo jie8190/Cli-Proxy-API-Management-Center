@@ -5,28 +5,51 @@ import path from 'path';
 import { execSync } from 'child_process';
 import fs from 'fs';
 
+function normalizeVersion(value?: string | null): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const unquoted = raw.replace(/^['"]+|['"]+$/g, '').trim();
+  if (!unquoted || unquoted === '...') return null;
+  return unquoted;
+}
+
+function runGitCommand(command: string): string | null {
+  try {
+    const output = execSync(command, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+    return normalizeVersion(output);
+  } catch {
+    return null;
+  }
+}
+
 // Get version from environment, git tag, or package.json
 function getVersion(): string {
   // 1. Environment variable (set by GitHub Actions)
-  if (process.env.VERSION) {
-    return process.env.VERSION;
+  const envVersion = normalizeVersion(process.env.VERSION);
+  if (envVersion) {
+    return envVersion;
   }
 
-  // 2. Try git tag
-  try {
-    const gitTag = execSync('git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo ""', { encoding: 'utf8' }).trim();
-    if (gitTag) {
-      return gitTag;
-    }
-  } catch {
-    // Git not available or no tags
+  // 2. Try exact tag first, then nearest tag
+  const exactTag = runGitCommand('git describe --tags --exact-match');
+  if (exactTag) {
+    return exactTag;
+  }
+
+  const nearestTag = runGitCommand('git describe --tags --abbrev=0');
+  if (nearestTag) {
+    return nearestTag;
   }
 
   // 3. Fall back to package.json version
   try {
     const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'));
-    if (pkg.version && pkg.version !== '0.0.0') {
-      return pkg.version;
+    const packageVersion = normalizeVersion(pkg.version);
+    if (packageVersion && packageVersion !== '0.0.0') {
+      return packageVersion;
     }
   } catch {
     // package.json not readable

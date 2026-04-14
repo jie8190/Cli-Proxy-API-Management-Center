@@ -68,6 +68,13 @@ const compareVersions = (latest?: string | null, current?: string | null) => {
   return 0;
 };
 
+const normalizeDisplayVersion = (version?: string | null) => {
+  if (!version) return null;
+  const normalized = version.trim().replace(/^['"]+|['"]+$/g, '').trim();
+  if (!normalized || normalized === '...') return null;
+  return normalized;
+};
+
 export function SystemPage() {
   const { t, i18n } = useTranslation();
   const { showNotification, showConfirmation } = useNotificationStore();
@@ -106,7 +113,7 @@ export function SystemPage() {
   const requestLogDirty = requestLogDraft !== requestLogEnabled;
   const canEditRequestLog = auth.connectionStatus === 'connected' && Boolean(config);
 
-  const appVersion = __APP_VERSION__ || t('system_info.version_unknown');
+  const appVersion = normalizeDisplayVersion(__APP_VERSION__) || t('system_info.version_unknown');
   const apiVersion = auth.serverVersion || t('system_info.version_unknown');
   const buildTime = auth.serverBuildDate
     ? new Date(auth.serverBuildDate).toLocaleString(i18n.language)
