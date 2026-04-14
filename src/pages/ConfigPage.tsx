@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
-import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
-import { yaml } from '@codemirror/lang-yaml';
-import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
-import { keymap } from '@codemirror/view';
+import type { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { parse as parseYaml, parseDocument } from 'yaml';
+import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import {
@@ -17,13 +15,16 @@ import {
 } from '@/components/ui/icons';
 import { VisualConfigEditor } from '@/components/config/VisualConfigEditor';
 import { DiffModal } from '@/components/config/DiffModal';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useVisualConfig } from '@/hooks/useVisualConfig';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
-import { useNotificationStore, useAuthStore, useThemeStore } from '@/stores';
+import { useNotificationStore, useAuthStore, useThemeStore, useConfigStore } from '@/stores';
 import { configFileApi } from '@/services/api/configFile';
 import styles from './ConfigPage.module.scss';
 
 type ConfigEditorTab = 'visual' | 'source';
+
+const LazyConfigSourceEditor = lazy(() => import('@/components/config/ConfigSourceEditor'));
 
 function readCommercialModeFromYaml(yamlContent: string): boolean {
   try {
@@ -37,10 +38,13 @@ function readCommercialModeFromYaml(yamlContent: string): boolean {
 
 export function ConfigPage() {
   const { t } = useTranslation();
+  const pageTransitionLayer = usePageTransitionLayer();
+  const isCurrentLayer = pageTransitionLayer ? pageTransitionLayer.isCurrentLayer : true;
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   const {
     visualValues,
@@ -75,11 +79,12 @@ export function ConfigPage() {
     total: 0,
   });
   const [lastSearchedQuery, setLastSearchedQuery] = useState('');
-  const editorRef = useRef<ReactCodeMirrorRef>(null);
+  const editorRef = useRef<ReactCodeMirrorRef | null>(null);
   const floatingActionsRef = useRef<HTMLDivElement>(null);
 
   const disableControls = connectionStatus !== 'connected';
   const isDirty = dirty || visualDirty;
+  const shouldRenderFloatingActions = isCurrentLayer;
   const hasVisualModeError = !!visualParseError;
   const hasVisualValidationErrors =
     activeTab === 'visual' &&
@@ -148,6 +153,24 @@ export function ConfigPage() {
       setServerYaml(latestContent);
       setMergedYaml(latestContent);
       loadVisualValuesFromYaml(latestContent);
+
+      // Keep the global config store in sync so sidebar / other pages reflect YAML changes immediately.
+      try {
+        useConfigStore.getState().clearCache();
+        await useConfigStore.getState().fetchConfig(undefined, true);
+      } catch (refreshError: unknown) {
+        const message =
+          refreshError instanceof Error
+            ? refreshError.message
+            : typeof refreshError === 'string'
+              ? refreshError
+              : '';
+        showNotification(
+          `${t('notification.refresh_failed')}${message ? `: ${message}` : ''}`,
+          'error'
+        );
+      }
+
       showNotification(t('config_management.save_success'), 'success');
       if (commercialModeChanged) {
         showNotification(t('notification.commercial_mode_restart_required'), 'warning');
@@ -373,7 +396,7 @@ export function ConfigPage() {
 
   // Keep bottom floating actions from covering page content by syncing its height to a CSS variable.
   useLayoutEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !shouldRenderFloatingActions) return;
 
     const actionsEl = floatingActionsRef.current;
     if (!actionsEl) return;
@@ -394,13 +417,7 @@ export function ConfigPage() {
       window.removeEventListener('resize', updatePadding);
       document.documentElement.style.removeProperty('--config-action-bar-height');
     };
-  }, []);
-
-  // CodeMirror extensions
-  const extensions = useMemo(
-    () => [yaml(), search(), highlightSelectionMatches(), keymap.of(searchKeymap)],
-    []
-  );
+  }, [shouldRenderFloatingActions]);
 
   // Status text
   const getStatusText = () => {
@@ -420,6 +437,21 @@ export function ConfigPage() {
     if (isDirty) return styles.modified;
     if (!loading && !saving) return styles.saved;
     return '';
+  };
+
+  const getFloatingStatusText = () => {
+    if (!isMobile) return getStatusText();
+    if (disableControls)
+      return t('config_management.status_disconnected_short', { defaultValue: 'Disconnected' });
+    if (loading) return t('config_management.status_loading_short', { defaultValue: 'Loading' });
+    if (error) return t('config_management.status_load_failed_short', { defaultValue: 'Failed' });
+    if (hasVisualModeError)
+      return t('config_management.visual_mode_unavailable_short', { defaultValue: 'YAML issue' });
+    if (hasVisualValidationErrors)
+      return t('config_management.visual.validation_blocked_short', { defaultValue: 'Fix errors' });
+    if (saving) return t('config_management.status_saving_short', { defaultValue: 'Saving' });
+    if (isDirty) return t('config_management.status_dirty_short', { defaultValue: 'Unsaved' });
+    return t('config_management.status_loaded_short', { defaultValue: 'Loaded' });
   };
 
   const handleReload = useCallback(() => {
@@ -443,7 +475,13 @@ export function ConfigPage() {
   const floatingActions = (
     <div className={styles.floatingActionContainer} ref={floatingActionsRef}>
       <div className={styles.floatingActionList}>
-        <div className={`${styles.floatingStatus} ${getStatusClass()}`}>{getStatusText()}</div>
+        <div
+          className={`${styles.floatingStatus} ${
+            isMobile ? styles.floatingStatusCompact : ''
+          } ${getStatusClass()}`}
+        >
+          {getFloatingStatusText()}
+        </div>
         <button
           type="button"
           className={styles.floatingActionButton}
@@ -600,44 +638,25 @@ export function ConfigPage() {
               </div>
 
               <div className={styles.editorWrapper}>
-                <CodeMirror
-                  ref={editorRef}
-                  value={content}
-                  onChange={handleChange}
-                  extensions={extensions}
-                  theme={resolvedTheme}
-                  editable={!disableControls && !loading}
-                  placeholder={t('config_management.editor_placeholder')}
-                  height="100%"
-                  style={{ height: '100%' }}
-                  basicSetup={{
-                    lineNumbers: true,
-                    highlightActiveLineGutter: true,
-                    highlightActiveLine: true,
-                    foldGutter: true,
-                    dropCursor: true,
-                    allowMultipleSelections: true,
-                    indentOnInput: true,
-                    bracketMatching: true,
-                    closeBrackets: true,
-                    autocompletion: false,
-                    rectangularSelection: true,
-                    crosshairCursor: false,
-                    highlightSelectionMatches: true,
-                    closeBracketsKeymap: true,
-                    searchKeymap: true,
-                    foldKeymap: true,
-                    completionKeymap: false,
-                    lintKeymap: true,
-                  }}
-                />
+                <Suspense fallback={null}>
+                  <LazyConfigSourceEditor
+                    editorRef={editorRef}
+                    value={content}
+                    onChange={handleChange}
+                    theme={resolvedTheme}
+                    editable={!disableControls && !loading}
+                    placeholder={t('config_management.editor_placeholder')}
+                  />
+                </Suspense>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {typeof document !== 'undefined' ? createPortal(floatingActions, document.body) : null}
+      {shouldRenderFloatingActions && typeof document !== 'undefined'
+        ? createPortal(floatingActions, document.body)
+        : null}
       <DiffModal
         open={diffModalOpen}
         original={serverYaml}

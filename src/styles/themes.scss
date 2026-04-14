@@ -11,6 +11,9 @@
   --bg-hover: var(--bg-tertiary);
   --bg-quinary: #f6f4ee;
   --bg-error-light: rgba(198, 87, 70, 0.1);
+  --floating-surface: #fffdf9;
+  --floating-border: #d8d3ca;
+  --floating-shadow: 0 12px 26px rgba(0, 0, 0, 0.14);
 
   --text-primary: #2d2a26;
   --text-secondary: #6d6760;
@@ -29,6 +32,7 @@
   --primary-contrast: #ffffff;
 
   --success-color: #10b981;
+  --quota-medium-color: #e0aa14;
   --warning-color: #c65746; // 错误/警告色
   --error-color: #c65746;
   --danger-color: var(--error-color);
@@ -54,6 +58,14 @@
 
   --radius-md: 8px;
   --accent-tertiary: var(--bg-tertiary);
+
+  // Glass effect (blurred surfaces)
+  --glass-blur: 12px;
+  --glass-backdrop-filter: blur(var(--glass-blur));
+  --glass-filter: blur(var(--glass-blur));
+  --glass-bg: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+  --glass-bg-secondary: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  --glass-border: color-mix(in srgb, var(--border-color) 60%, transparent);
 }
 
 // 纯白主题
@@ -64,6 +76,9 @@
   --bg-hover: var(--bg-tertiary);
   --bg-quinary: #ffffff;
   --bg-error-light: rgba(198, 87, 70, 0.08);
+  --floating-surface: #ffffff;
+  --floating-border: #d9d9d9;
+  --floating-shadow: 0 12px 26px rgba(0, 0, 0, 0.12);
 
   --text-primary: #2d2a26;
   --text-secondary: #6d6760;
@@ -82,6 +97,7 @@
   --primary-contrast: #ffffff;
 
   --success-color: #10b981;
+  --quota-medium-color: #e0aa14;
   --warning-color: #c65746;
   --error-color: #c65746;
   --danger-color: var(--error-color);
@@ -118,6 +134,9 @@
   --bg-hover: #2e2a26;
   --bg-quinary: #191714;
   --bg-error-light: rgba(198, 87, 70, 0.18);
+  --floating-surface: #2a2723;
+  --floating-border: #4a443d;
+  --floating-shadow: 0 14px 30px rgba(0, 0, 0, 0.4);
 
   --text-primary: #f6f4f1;
   --text-secondary: #c9c3bb;
@@ -136,6 +155,7 @@
   --primary-contrast: #ffffff;
 
   --success-color: #10b981;
+  --quota-medium-color: #ffd862;
   --warning-color: #c65746;
   --error-color: #c65746;
   --danger-color: var(--error-color);
@@ -161,4 +181,16 @@
 
   --radius-md: 8px;
   --accent-tertiary: var(--bg-tertiary);
+
+  --glass-border: color-mix(in srgb, var(--border-color) 55%, transparent);
+}
+
+@media (max-width: 768px), (prefers-reduced-motion: reduce), (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-backdrop-filter: none;
+    --glass-filter: none;
+    --glass-bg: var(--bg-primary);
+    --glass-bg-secondary: var(--bg-secondary);
+    --glass-border: var(--border-color);
+  }
 }

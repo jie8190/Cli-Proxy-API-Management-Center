@@ -53,7 +53,9 @@ import { useAuthFilesStatusBarCache } from '@/features/authFiles/hooks/useAuthFi
 import {
   isAuthFilesSortMode,
   readAuthFilesUiState,
+  readPersistedAuthFilesCompactMode,
   writeAuthFilesUiState,
+  writePersistedAuthFilesCompactMode,
   type AuthFilesSortMode,
 } from '@/features/authFiles/uiState';
 import { useAuthStore, useNotificationStore, useThemeStore } from '@/stores';
@@ -65,6 +67,15 @@ const BATCH_BAR_BASE_TRANSFORM = 'translateX(-50%)';
 const BATCH_BAR_HIDDEN_TRANSFORM = 'translateX(-50%) translateY(56px)';
 const DEFAULT_REGULAR_PAGE_SIZE = 9;
 const DEFAULT_COMPACT_PAGE_SIZE = 12;
+
+const escapeWildcardSearchSegment = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildWildcardSearch = (value: string): RegExp | null => {
+  if (!value.includes('*')) return null;
+  const pattern = value.split('*').map(escapeWildcardSearchSegment).join('.*');
+  return new RegExp(pattern, 'i');
+};
 
 export function AuthFilesPage() {
   const { t } = useTranslation();
@@ -88,6 +99,7 @@ export function AuthFilesPage() {
   const [viewMode, setViewMode] = useState<'diagram' | 'list'>('list');
   const [sortMode, setSortMode] = useState<AuthFilesSortMode>('default');
   const [batchActionBarVisible, setBatchActionBarVisible] = useState(false);
+  const [uiStateHydrated, setUiStateHydrated] = useState(false);
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
   const batchActionAnimationRef = useRef<AnimationPlaybackControlsWithThen | null>(null);
   const previousSelectionCountRef = useRef(0);
@@ -176,46 +188,58 @@ export function AuthFilesPage() {
   const pageSize = compactMode ? pageSizeByMode.compact : pageSizeByMode.regular;
 
   useEffect(() => {
-    const persisted = readAuthFilesUiState();
-    if (!persisted) return;
+    const persistedCompactMode = readPersistedAuthFilesCompactMode();
+    if (typeof persistedCompactMode === 'boolean') {
+      setCompactMode(persistedCompactMode);
+    }
 
-    if (typeof persisted.filter === 'string' && persisted.filter.trim()) {
-      setFilter(persisted.filter);
+    const persisted = readAuthFilesUiState();
+    if (persisted) {
+      if (typeof persisted.filter === 'string' && persisted.filter.trim()) {
+        setFilter(persisted.filter);
+      }
+      if (typeof persisted.problemOnly === 'boolean') {
+        setProblemOnly(persisted.problemOnly);
+      }
+      if (
+        typeof persistedCompactMode !== 'boolean' &&
+        typeof persisted.compactMode === 'boolean'
+      ) {
+        setCompactMode(persisted.compactMode);
+      }
+      if (typeof persisted.search === 'string') {
+        setSearch(persisted.search);
+      }
+      if (typeof persisted.page === 'number' && Number.isFinite(persisted.page)) {
+        setPage(Math.max(1, Math.round(persisted.page)));
+      }
+      const legacyPageSize =
+        typeof persisted.pageSize === 'number' && Number.isFinite(persisted.pageSize)
+          ? clampCardPageSize(persisted.pageSize)
+          : null;
+      const regularPageSize =
+        typeof persisted.regularPageSize === 'number' && Number.isFinite(persisted.regularPageSize)
+          ? clampCardPageSize(persisted.regularPageSize)
+          : legacyPageSize ?? DEFAULT_REGULAR_PAGE_SIZE;
+      const compactPageSize =
+        typeof persisted.compactPageSize === 'number' && Number.isFinite(persisted.compactPageSize)
+          ? clampCardPageSize(persisted.compactPageSize)
+          : legacyPageSize ?? DEFAULT_COMPACT_PAGE_SIZE;
+      setPageSizeByMode({
+        regular: regularPageSize,
+        compact: compactPageSize,
+      });
+      if (isAuthFilesSortMode(persisted.sortMode)) {
+        setSortMode(persisted.sortMode);
+      }
     }
-    if (typeof persisted.problemOnly === 'boolean') {
-      setProblemOnly(persisted.problemOnly);
-    }
-    if (typeof persisted.compactMode === 'boolean') {
-      setCompactMode(persisted.compactMode);
-    }
-    if (typeof persisted.search === 'string') {
-      setSearch(persisted.search);
-    }
-    if (typeof persisted.page === 'number' && Number.isFinite(persisted.page)) {
-      setPage(Math.max(1, Math.round(persisted.page)));
-    }
-    const legacyPageSize =
-      typeof persisted.pageSize === 'number' && Number.isFinite(persisted.pageSize)
-        ? clampCardPageSize(persisted.pageSize)
-        : null;
-    const regularPageSize =
-      typeof persisted.regularPageSize === 'number' && Number.isFinite(persisted.regularPageSize)
-        ? clampCardPageSize(persisted.regularPageSize)
-        : legacyPageSize ?? DEFAULT_REGULAR_PAGE_SIZE;
-    const compactPageSize =
-      typeof persisted.compactPageSize === 'number' && Number.isFinite(persisted.compactPageSize)
-        ? clampCardPageSize(persisted.compactPageSize)
-        : legacyPageSize ?? DEFAULT_COMPACT_PAGE_SIZE;
-    setPageSizeByMode({
-      regular: regularPageSize,
-      compact: compactPageSize,
-    });
-    if (isAuthFilesSortMode(persisted.sortMode)) {
-      setSortMode(persisted.sortMode);
-    }
+
+    setUiStateHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (!uiStateHydrated) return;
+
     writeAuthFilesUiState({
       filter,
       problemOnly,
@@ -227,7 +251,18 @@ export function AuthFilesPage() {
       compactPageSize: pageSizeByMode.compact,
       sortMode,
     });
-  }, [filter, problemOnly, compactMode, search, page, pageSize, pageSizeByMode, sortMode]);
+    writePersistedAuthFilesCompactMode(compactMode);
+  }, [
+    compactMode,
+    filter,
+    page,
+    pageSize,
+    pageSizeByMode,
+    problemOnly,
+    search,
+    sortMode,
+    uiStateHydrated,
+  ]);
 
   useEffect(() => {
     setPageSizeInput(String(pageSize));
@@ -342,23 +377,25 @@ export function AuthFilesPage() {
     return counts;
   }, [filesMatchingProblemFilter]);
 
-  const activeFilterLabel =
-    filter === 'all' ? t('auth_files.filter_all') : getTypeLabel(t, String(filter));
-  const activeFilterCount = typeCounts[String(filter)] ?? 0;
-  const activeFilterIcon = getAuthFileIcon(String(filter), resolvedTheme);
+  const normalizedSearch = search.trim();
+  const wildcardSearch = useMemo(() => buildWildcardSearch(normalizedSearch), [normalizedSearch]);
 
   const filtered = useMemo(() => {
+    const normalizedTerm = normalizedSearch.toLowerCase();
+
     return filesMatchingProblemFilter.filter((item) => {
       const matchType = filter === 'all' || item.type === filter;
-      const term = search.trim().toLowerCase();
       const matchSearch =
-        !term ||
-        item.name.toLowerCase().includes(term) ||
-        (item.type || '').toString().toLowerCase().includes(term) ||
-        (item.provider || '').toString().toLowerCase().includes(term);
+        !normalizedSearch ||
+        [item.name, item.type, item.provider].some((value) => {
+          const content = (value || '').toString();
+          return wildcardSearch
+            ? wildcardSearch.test(content)
+            : content.toLowerCase().includes(normalizedTerm);
+        });
       return matchType && matchSearch;
     });
-  }, [filesMatchingProblemFilter, filter, search]);
+  }, [filesMatchingProblemFilter, filter, normalizedSearch, wildcardSearch]);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -539,42 +576,7 @@ export function AuthFilesPage() {
   );
 
   const renderFilterTags = () => (
-    <aside className={styles.filterRail}>
-      <div className={styles.filterRailHeader}>
-        <span className={styles.filterRailEyebrow}>
-          {t('nav.ai_providers', { defaultValue: 'Providers' })}
-        </span>
-        <div className={styles.filterRailHero}>
-          <div className={styles.filterRailHeroTitle}>
-            {filter === 'all' ? (
-              <span className={`${styles.filterRailHeroIcon} ${styles.filterAllIconWrap}`}>
-                <IconFilterAll className={styles.filterAllIcon} size={22} />
-              </span>
-            ) : (
-              <div className={styles.filterRailHeroIcon}>
-                {activeFilterIcon ? (
-                  <img src={activeFilterIcon} alt="" className={styles.filterRailHeroIconImage} />
-                ) : (
-                  <span className={styles.filterRailHeroIconFallback}>
-                    {activeFilterLabel.slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-              </div>
-            )}
-            <div className={styles.filterRailHeroText}>
-              <span className={styles.filterRailTitle}>{activeFilterLabel}</span>
-              <span className={styles.filterRailDescription}>{t('auth_files.title_section')}</span>
-            </div>
-          </div>
-          <div className={styles.filterRailMeta}>
-            <span className={styles.filterRailCount}>{activeFilterCount}</span>
-            {problemOnly && (
-              <span className={styles.filterRailMode}>{t('auth_files.problem_filter_only')}</span>
-            )}
-          </div>
-        </div>
-      </div>
-
+    <div className={styles.filterRail}>
       <div className={styles.filterTags}>
         {existingTypes.map((type) => {
           const isActive = filter === type;
@@ -602,7 +604,7 @@ export function AuthFilesPage() {
               <span className={styles.filterTagLabel}>
                 {type === 'all' ? (
                   <span className={`${styles.filterTagIconWrap} ${styles.filterAllIconWrap}`}>
-                    <IconFilterAll className={styles.filterAllIcon} size={18} />
+                    <IconFilterAll className={styles.filterAllIcon} size={16} />
                   </span>
                 ) : (
                   <span className={styles.filterTagIconWrap}>
@@ -622,7 +624,7 @@ export function AuthFilesPage() {
           );
         })}
       </div>
-    </aside>
+    </div>
   );
 
   const titleNode = (
