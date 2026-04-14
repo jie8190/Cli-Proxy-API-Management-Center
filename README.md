@@ -1,39 +1,24 @@
-# CLI Proxy API Management Center (Customized Fork)
-
-This repository is a customized fork based on [router-for-me/Cli-Proxy-API-Management-Center](https://github.com/router-for-me/Cli-Proxy-API-Management-Center), focused on practical UX improvements for daily remote operations.
+# CLI Proxy API Management Center (Improved Fork)
 
 [中文说明](README_CN.md)
 
-## Improvements in this fork
+This fork focuses on practical UX improvements.
 
-1. Panel repository location note (existing feature, not newly added)  
-The panel repository field already exists in `Remote Management`; this fork documents the exact location for faster setup.
+## Updates
 
-![Remote management - panel repository](./docs/images/remote-control-panel-repo.png)
+1. API key alias support  
+Add/edit API keys with aliases for clearer key identification.
 
-2. API key alias support  
-When adding a key, you can assign an alias for easier identification.
+2. Unsaved changes leave warning  
+Shows a confirmation dialog before leaving when there are unsaved edits.
 
-![API key alias](./docs/images/api-key-alias.png)
-
-3. Unsaved changes warning  
-If there are unsaved edits, leaving the page triggers a confirmation dialog.
-
-![Unsaved changes warning](./docs/images/unsaved-changes-warning.png)
+3. API alias shown in usage stats  
+Usage statistics views can display API aliases for easier request-source tracing.
 
 ## Configuration
 
-1. Start CLIProxyAPI (`v6.8.0+` recommended).  
-2. Open: `http://<server-ip>:<port>/management.html`.  
-3. Enter the management key to connect.  
-4. Go to `Remote Management` and configure panel repository if needed.  
-5. Go to `API Keys` and set alias while creating/editing keys.  
-6. Save changes before leaving the page.  
-7. Restart CLIProxyAPI after backend config changes.  
+1. Open the management panel and go to `Remote Management`.  
+2. Set `Panel Repository` to: `https://github.com/jie8190/Cli-Proxy-API-Management-Center`.  
+3. Save and restart service if needed.  
 
-## Update Notes
-
-- Added alias field for API keys.  
-- Added unsaved-changes leave confirmation dialog.  
-- Clarified that panel repository is an existing config item and documented where to find it.  
-- Improved overall configuration safety and usability.  
+![Remote management - panel repository](./docs/images/remote-control-panel-repo.png)
