@@ -6,8 +6,8 @@ This repository is a customized fork based on [router-for-me/Cli-Proxy-API-Manag
 
 ## Improvements in this fork
 
-1. Panel repository setting in `Remote Management`  
-You can configure the panel repository URL directly from the remote-control page.
+1. Panel repository location note (existing feature, not newly added)  
+The panel repository field already exists in `Remote Management`; this fork documents the exact location for faster setup.
 
 ![Remote management - panel repository](./docs/images/remote-control-panel-repo.png)
 
@@ -33,8 +33,7 @@ If there are unsaved edits, leaving the page triggers a confirmation dialog.
 
 ## Update Notes
 
-- Added panel repository config in remote management.  
 - Added alias field for API keys.  
 - Added unsaved-changes leave confirmation dialog.  
+- Clarified that panel repository is an existing config item and documented where to find it.  
 - Improved overall configuration safety and usability.  
-
