@@ -214,6 +214,26 @@ function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function areStringRecordsEqual(
+  left?: Record<string, string>,
+  right?: Record<string, string>
+): boolean {
+  const leftEntries = Object.entries(left ?? {}).filter(
+    ([key, value]) => typeof key === 'string' && key.trim() && typeof value === 'string' && value.trim()
+  );
+  const rightEntries = Object.entries(right ?? {}).filter(
+    ([key, value]) => typeof key === 'string' && key.trim() && typeof value === 'string' && value.trim()
+  );
+
+  if (leftEntries.length !== rightEntries.length) return false;
+
+  for (const [key, value] of leftEntries) {
+    if ((right ?? {})[key] !== value) return false;
+  }
+
+  return true;
+}
+
 function arePayloadModelEntriesEqual(
   left: PayloadRule['models'],
   right: PayloadRule['models']
@@ -601,6 +621,12 @@ function getNextDirtyFields(
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'apiKeysText')) {
     updateDirty('apiKeysText', nextValues.apiKeysText === baselineValues.apiKeysText);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'apiKeyNames')) {
+    updateDirty(
+      'apiKeyNames',
+      areStringRecordsEqual(nextValues.apiKeyNames, baselineValues.apiKeyNames)
+    );
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'debug')) {
     updateDirty('debug', nextValues.debug === baselineValues.debug);
