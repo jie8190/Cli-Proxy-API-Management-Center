@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useNotificationStore, useThemeStore } from '@/stores';
-import { oauthApi, type OAuthProvider, type IFlowCookieAuthResponse } from '@/services/api/oauth';
+import { oauthApi, type OAuthProvider } from '@/services/api/oauth';
 import { vertexApi, type VertexImportResponse } from '@/services/api/vertex';
 import { copyToClipboard } from '@/utils/clipboard';
 import styles from './OAuthPage.module.scss';
@@ -14,8 +15,6 @@ import iconAntigravity from '@/assets/icons/antigravity.svg';
 import iconGemini from '@/assets/icons/gemini.svg';
 import iconKimiLight from '@/assets/icons/kimi-light.svg';
 import iconKimiDark from '@/assets/icons/kimi-dark.svg';
-import iconQwen from '@/assets/icons/qwen.svg';
-import iconIflow from '@/assets/icons/iflow.svg';
 import iconVertex from '@/assets/icons/vertex.svg';
 
 interface ProviderState {
@@ -30,14 +29,6 @@ interface ProviderState {
   callbackSubmitting?: boolean;
   callbackStatus?: 'success' | 'error';
   callbackError?: string;
-}
-
-interface IFlowCookieState {
-  cookie: string;
-  loading: boolean;
-  result?: IFlowCookieAuthResponse;
-  error?: string;
-  errorType?: 'error' | 'warning';
 }
 
 interface VertexImportResult {
@@ -76,11 +67,11 @@ const PROVIDERS: { id: OAuthProvider; titleKey: string; hintKey: string; urlLabe
   { id: 'anthropic', titleKey: 'auth_login.anthropic_oauth_title', hintKey: 'auth_login.anthropic_oauth_hint', urlLabelKey: 'auth_login.anthropic_oauth_url_label', icon: iconClaude },
   { id: 'antigravity', titleKey: 'auth_login.antigravity_oauth_title', hintKey: 'auth_login.antigravity_oauth_hint', urlLabelKey: 'auth_login.antigravity_oauth_url_label', icon: iconAntigravity },
   { id: 'gemini-cli', titleKey: 'auth_login.gemini_cli_oauth_title', hintKey: 'auth_login.gemini_cli_oauth_hint', urlLabelKey: 'auth_login.gemini_cli_oauth_url_label', icon: iconGemini },
-  { id: 'kimi', titleKey: 'auth_login.kimi_oauth_title', hintKey: 'auth_login.kimi_oauth_hint', urlLabelKey: 'auth_login.kimi_oauth_url_label', icon: { light: iconKimiLight, dark: iconKimiDark } },
-  { id: 'qwen', titleKey: 'auth_login.qwen_oauth_title', hintKey: 'auth_login.qwen_oauth_hint', urlLabelKey: 'auth_login.qwen_oauth_url_label', icon: iconQwen }
+  { id: 'kimi', titleKey: 'auth_login.kimi_oauth_title', hintKey: 'auth_login.kimi_oauth_hint', urlLabelKey: 'auth_login.kimi_oauth_url_label', icon: { light: iconKimiLight, dark: iconKimiDark } }
 ];
 
 const CALLBACK_SUPPORTED: OAuthProvider[] = ['codex', 'anthropic', 'antigravity', 'gemini-cli'];
+const SUCCESS_RESET_DELAY_MS = 5000;
 const getProviderI18nPrefix = (provider: OAuthProvider) => provider.replace('-', '_');
 const getAuthKey = (provider: OAuthProvider, suffix: string) =>
   `auth_login.${getProviderI18nPrefix(provider)}_${suffix}`;
@@ -91,21 +82,28 @@ const getIcon = (icon: string | { light: string; dark: string }, theme: 'light' 
 
 export function OAuthPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { showNotification } = useNotificationStore();
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const [states, setStates] = useState<Record<OAuthProvider, ProviderState>>({} as Record<OAuthProvider, ProviderState>);
-  const [iflowCookie, setIflowCookie] = useState<IFlowCookieState>({ cookie: '', loading: false });
   const [vertexState, setVertexState] = useState<VertexImportState>({
     fileName: '',
     location: '',
     loading: false
   });
-  const timers = useRef<Record<string, number>>({});
+  const pollingTimers = useRef<Partial<Record<OAuthProvider, number>>>({});
+  const successResetTimers = useRef<Partial<Record<OAuthProvider, number>>>({});
   const vertexFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const clearTimers = useCallback(() => {
-    Object.values(timers.current).forEach((timer) => window.clearInterval(timer));
-    timers.current = {};
+    Object.values(pollingTimers.current).forEach((timer) => {
+      if (timer !== undefined) window.clearInterval(timer);
+    });
+    Object.values(successResetTimers.current).forEach((timer) => {
+      if (timer !== undefined) window.clearTimeout(timer);
+    });
+    pollingTimers.current = {};
+    successResetTimers.current = {};
   }, []);
 
   useEffect(() => {
@@ -121,18 +119,69 @@ export function OAuthPage() {
     }));
   };
 
-  const startPolling = (provider: OAuthProvider, state: string) => {
-    if (timers.current[provider]) {
-      clearInterval(timers.current[provider]);
+  const clearPollingTimer = (provider: OAuthProvider) => {
+    const timer = pollingTimers.current[provider];
+    if (timer !== undefined) {
+      window.clearInterval(timer);
+      delete pollingTimers.current[provider];
     }
+  };
+
+  const clearSuccessResetTimer = (provider: OAuthProvider) => {
+    const timer = successResetTimers.current[provider];
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      delete successResetTimers.current[provider];
+    }
+  };
+
+  const clearProviderTimers = (provider: OAuthProvider) => {
+    clearPollingTimer(provider);
+    clearSuccessResetTimer(provider);
+  };
+
+  const resetProviderAttempt = (provider: OAuthProvider) => {
+    clearProviderTimers(provider);
+    setStates((prev) => {
+      const current = prev[provider] ?? {};
+      const next: ProviderState = {};
+      if (provider === 'gemini-cli' && current.projectId !== undefined) {
+        next.projectId = current.projectId;
+      }
+      return {
+        ...prev,
+        [provider]: next
+      };
+    });
+  };
+
+  const completeProviderAuth = (provider: OAuthProvider) => {
+    clearPollingTimer(provider);
+    clearSuccessResetTimer(provider);
+    updateProviderState(provider, {
+      url: undefined,
+      state: undefined,
+      status: 'success',
+      error: undefined,
+      polling: false,
+      callbackUrl: '',
+      callbackSubmitting: false,
+      callbackStatus: undefined,
+      callbackError: undefined
+    });
+    successResetTimers.current[provider] = window.setTimeout(() => {
+      resetProviderAttempt(provider);
+    }, SUCCESS_RESET_DELAY_MS);
+  };
+
+  const startPolling = (provider: OAuthProvider, state: string) => {
+    clearPollingTimer(provider);
     const timer = window.setInterval(async () => {
       try {
         const res = await oauthApi.getAuthStatus(state);
         if (res.status === 'ok') {
-          updateProviderState(provider, { status: 'success', polling: false });
+          completeProviderAuth(provider);
           showNotification(t(getAuthKey(provider, 'oauth_status_success')), 'success');
-          window.clearInterval(timer);
-          delete timers.current[provider];
         } else if (res.status === 'error') {
           updateProviderState(provider, { status: 'error', error: res.error, polling: false });
           showNotification(
@@ -140,18 +189,19 @@ export function OAuthPage() {
             'error'
           );
           window.clearInterval(timer);
-          delete timers.current[provider];
+          delete pollingTimers.current[provider];
         }
       } catch (err: unknown) {
         updateProviderState(provider, { status: 'error', error: getErrorMessage(err), polling: false });
         window.clearInterval(timer);
-        delete timers.current[provider];
+        delete pollingTimers.current[provider];
       }
     }, 3000);
-    timers.current[provider] = timer;
+    pollingTimers.current[provider] = timer;
   };
 
   const startAuth = async (provider: OAuthProvider) => {
+    clearProviderTimers(provider);
     const geminiState = provider === 'gemini-cli' ? states[provider] : undefined;
     const rawProjectId = provider === 'gemini-cli' ? (geminiState?.projectId || '').trim() : '';
     const projectId = rawProjectId
@@ -164,6 +214,8 @@ export function OAuthPage() {
       updateProviderState(provider, { projectIdError: undefined });
     }
     updateProviderState(provider, {
+      url: undefined,
+      state: undefined,
       status: 'waiting',
       polling: true,
       error: undefined,
@@ -176,10 +228,20 @@ export function OAuthPage() {
         provider,
         provider === 'gemini-cli' ? { projectId: projectId || undefined } : undefined
       );
-      updateProviderState(provider, { url: res.url, state: res.state, status: 'waiting', polling: true });
-      if (res.state) {
-        startPolling(provider, res.state);
+      if (!res.state) {
+        const message = t('auth_login.missing_state');
+        updateProviderState(provider, {
+          url: res.url,
+          state: undefined,
+          status: 'error',
+          error: message,
+          polling: false
+        });
+        showNotification(message, 'error');
+        return;
       }
+      updateProviderState(provider, { url: res.url, state: res.state, status: 'waiting', polling: true });
+      startPolling(provider, res.state);
     } catch (err: unknown) {
       const message = getErrorMessage(err);
       updateProviderState(provider, { status: 'error', error: message, polling: false });
@@ -232,49 +294,6 @@ export function OAuthPage() {
         ? `${t('auth_login.oauth_callback_error')} ${errorMessage}`
         : t('auth_login.oauth_callback_error');
       showNotification(notificationMessage, 'error');
-    }
-  };
-
-  const submitIflowCookie = async () => {
-    const cookie = iflowCookie.cookie.trim();
-    if (!cookie) {
-      showNotification(t('auth_login.iflow_cookie_required'), 'warning');
-      return;
-    }
-    setIflowCookie((prev) => ({
-      ...prev,
-      loading: true,
-      error: undefined,
-      errorType: undefined,
-      result: undefined
-    }));
-    try {
-      const res = await oauthApi.iflowCookieAuth(cookie);
-      if (res.status === 'ok') {
-        setIflowCookie((prev) => ({ ...prev, loading: false, result: res }));
-        showNotification(t('auth_login.iflow_cookie_status_success'), 'success');
-      } else {
-        setIflowCookie((prev) => ({
-          ...prev,
-          loading: false,
-          error: res.error,
-          errorType: 'error'
-        }));
-        showNotification(`${t('auth_login.iflow_cookie_status_error')} ${res.error || ''}`, 'error');
-      }
-    } catch (err: unknown) {
-      if (getErrorStatus(err) === 409) {
-        const message = t('auth_login.iflow_cookie_config_duplicate');
-        setIflowCookie((prev) => ({ ...prev, loading: false, error: message, errorType: 'warning' }));
-        showNotification(message, 'warning');
-        return;
-      }
-      const message = getErrorMessage(err);
-      setIflowCookie((prev) => ({ ...prev, loading: false, error: message, errorType: 'error' }));
-      showNotification(
-        `${t('auth_login.iflow_cookie_start_error')}${message ? ` ${message}` : ''}`,
-        'error'
-      );
     }
   };
 
@@ -344,6 +363,17 @@ export function OAuthPage() {
         {PROVIDERS.map((provider) => {
           const state = states[provider.id] || {};
           const canSubmitCallback = CALLBACK_SUPPORTED.includes(provider.id) && Boolean(state.url);
+          const loginButtonLabel =
+            state.status === 'success'
+              ? t('auth_login.login_another_account')
+              : t(getAuthKey(provider.id, 'oauth_button'));
+          const statusBadgeClassName = [
+            'status-badge',
+            state.status === 'success' ? 'success' : '',
+            state.status === 'error' ? 'error' : ''
+          ]
+            .filter(Boolean)
+            .join(' ');
           return (
             <div key={provider.id}>
               <Card
@@ -359,7 +389,7 @@ export function OAuthPage() {
                 }
                 extra={
                   <Button onClick={() => startAuth(provider.id)} loading={state.polling}>
-                    {t('common.login')}
+                    {loginButtonLabel}
                   </Button>
                 }
               >
@@ -439,12 +469,19 @@ export function OAuthPage() {
                     </div>
                   )}
                   {state.status && state.status !== 'idle' && (
-                    <div className="status-badge">
+                    <div className={statusBadgeClassName}>
                       {state.status === 'success'
                         ? t(getAuthKey(provider.id, 'oauth_status_success'))
                         : state.status === 'error'
                           ? `${t(getAuthKey(provider.id, 'oauth_status_error'))} ${state.error || ''}`
                           : t(getAuthKey(provider.id, 'oauth_status_waiting'))}
+                    </div>
+                  )}
+                  {state.status === 'success' && (
+                    <div className={styles.successActions}>
+                      <Button variant="secondary" size="sm" onClick={() => navigate('/auth-files')}>
+                        {t('auth_login.view_auth_files')}
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -535,77 +572,6 @@ export function OAuthPage() {
                     <div className={styles.keyValueItem}>
                       <span className={styles.keyValueKey}>{t('vertex_import.result_file')}</span>
                       <span className={styles.keyValueValue}>{vertexState.result.authFile}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* iFlow Cookie 登录 */}
-        <Card
-          title={
-            <span className={styles.cardTitle}>
-              <img src={iconIflow} alt="" className={styles.cardTitleIcon} />
-              {t('auth_login.iflow_cookie_title')}
-            </span>
-          }
-          extra={
-            <Button onClick={submitIflowCookie} loading={iflowCookie.loading}>
-              {t('auth_login.iflow_cookie_button')}
-            </Button>
-          }
-        >
-          <div className={styles.cardContent}>
-            <div className={styles.cardHint}>{t('auth_login.iflow_cookie_hint')}</div>
-            <div className={styles.cardHintSecondary}>
-              {t('auth_login.iflow_cookie_key_hint')}
-            </div>
-            <div className={styles.formItem}>
-              <label className={styles.formItemLabel}>{t('auth_login.iflow_cookie_label')}</label>
-              <Input
-                value={iflowCookie.cookie}
-                onChange={(e) => setIflowCookie((prev) => ({ ...prev, cookie: e.target.value }))}
-                placeholder={t('auth_login.iflow_cookie_placeholder')}
-              />
-            </div>
-            {iflowCookie.error && (
-              <div
-                className={`status-badge ${iflowCookie.errorType === 'warning' ? 'warning' : 'error'}`}
-              >
-                {iflowCookie.errorType === 'warning'
-                  ? t('auth_login.iflow_cookie_status_duplicate')
-                  : t('auth_login.iflow_cookie_status_error')}{' '}
-                {iflowCookie.error}
-              </div>
-            )}
-            {iflowCookie.result && iflowCookie.result.status === 'ok' && (
-              <div className={styles.connectionBox}>
-                <div className={styles.connectionLabel}>{t('auth_login.iflow_cookie_result_title')}</div>
-                <div className={styles.keyValueList}>
-                  {iflowCookie.result.email && (
-                    <div className={styles.keyValueItem}>
-                      <span className={styles.keyValueKey}>{t('auth_login.iflow_cookie_result_email')}</span>
-                      <span className={styles.keyValueValue}>{iflowCookie.result.email}</span>
-                    </div>
-                  )}
-                  {iflowCookie.result.expired && (
-                    <div className={styles.keyValueItem}>
-                      <span className={styles.keyValueKey}>{t('auth_login.iflow_cookie_result_expired')}</span>
-                      <span className={styles.keyValueValue}>{iflowCookie.result.expired}</span>
-                    </div>
-                  )}
-                  {iflowCookie.result.saved_path && (
-                    <div className={styles.keyValueItem}>
-                      <span className={styles.keyValueKey}>{t('auth_login.iflow_cookie_result_path')}</span>
-                      <span className={styles.keyValueValue}>{iflowCookie.result.saved_path}</span>
-                    </div>
-                  )}
-                  {iflowCookie.result.type && (
-                    <div className={styles.keyValueItem}>
-                      <span className={styles.keyValueKey}>{t('auth_login.iflow_cookie_result_type')}</span>
-                      <span className={styles.keyValueValue}>{iflowCookie.result.type}</span>
                     </div>
                   )}
                 </div>

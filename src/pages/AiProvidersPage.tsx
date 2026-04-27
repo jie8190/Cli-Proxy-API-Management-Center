@@ -20,7 +20,7 @@ import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { ampcodeApi, providersApi } from '@/services/api';
 import { useAuthStore, useConfigStore, useNotificationStore, useThemeStore } from '@/stores';
 import type { GeminiKeyConfig, OpenAIProviderConfig, ProviderKeyConfig } from '@/types';
-import { indexUsageDetailsBySource } from '@/utils/usageIndex';
+import { indexUsageDetailsByAuthIndex, indexUsageDetailsBySource } from '@/utils/usageIndex';
 import styles from './AiProvidersPage.module.scss';
 
 export function AiProvidersPage() {
@@ -71,6 +71,10 @@ export function AiProvidersPage() {
     () => indexUsageDetailsBySource(usageDetails),
     [usageDetails]
   );
+  const usageDetailsByAuthIndex = useMemo(
+    () => indexUsageDetailsByAuthIndex(usageDetails),
+    [usageDetails]
+  );
 
   const getErrorMessage = (err: unknown) => {
     if (err instanceof Error) return err.message;
@@ -85,10 +89,11 @@ export function AiProvidersPage() {
     }
     setError('');
     try {
-      const [configResult, vertexResult, ampcodeResult] = await Promise.allSettled([
+      const [configResult, vertexResult, ampcodeResult, openaiResult] = await Promise.allSettled([
         fetchConfig(),
         providersApi.getVertexConfigs(),
         ampcodeApi.getAmpcode(),
+        providersApi.getOpenAIProviders(),
       ]);
 
       if (configResult.status !== 'fulfilled') {
@@ -111,6 +116,12 @@ export function AiProvidersPage() {
       if (ampcodeResult.status === 'fulfilled') {
         updateConfigValue('ampcode', ampcodeResult.value);
         clearCache('ampcode');
+      }
+
+      if (openaiResult.status === 'fulfilled') {
+        setOpenaiProviders(openaiResult.value || []);
+        updateConfigValue('openai-compatibility', openaiResult.value || []);
+        clearCache('openai-compatibility');
       }
     } catch (err: unknown) {
       const message = getErrorMessage(err) || t('notification.refresh_failed');
@@ -378,6 +389,7 @@ export function AiProvidersPage() {
             configs={geminiKeys}
             keyStats={keyStats}
             usageDetailsBySource={usageDetailsBySource}
+            usageDetailsByAuthIndex={usageDetailsByAuthIndex}
             loading={loading}
             disableControls={disableControls}
             isSwitching={isSwitching}
@@ -393,6 +405,7 @@ export function AiProvidersPage() {
             configs={codexConfigs}
             keyStats={keyStats}
             usageDetailsBySource={usageDetailsBySource}
+            usageDetailsByAuthIndex={usageDetailsByAuthIndex}
             loading={loading}
             disableControls={disableControls}
             isSwitching={isSwitching}
@@ -408,6 +421,7 @@ export function AiProvidersPage() {
             configs={claudeConfigs}
             keyStats={keyStats}
             usageDetailsBySource={usageDetailsBySource}
+            usageDetailsByAuthIndex={usageDetailsByAuthIndex}
             loading={loading}
             disableControls={disableControls}
             isSwitching={isSwitching}
@@ -423,6 +437,7 @@ export function AiProvidersPage() {
             configs={vertexConfigs}
             keyStats={keyStats}
             usageDetailsBySource={usageDetailsBySource}
+            usageDetailsByAuthIndex={usageDetailsByAuthIndex}
             loading={loading}
             disableControls={disableControls}
             isSwitching={isSwitching}
@@ -448,6 +463,7 @@ export function AiProvidersPage() {
             configs={openaiProviders}
             keyStats={keyStats}
             usageDetailsBySource={usageDetailsBySource}
+            usageDetailsByAuthIndex={usageDetailsByAuthIndex}
             loading={loading}
             disableControls={disableControls}
             isSwitching={isSwitching}

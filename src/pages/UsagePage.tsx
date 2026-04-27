@@ -17,8 +17,10 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Select } from '@/components/ui/Select';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
-import { useThemeStore, useConfigStore } from '@/stores';
+import { providersApi } from '@/services/api';
 import { configFileApi } from '@/services/api/configFile';
+import { useThemeStore, useConfigStore } from '@/stores';
+import type { OpenAIProviderConfig } from '@/types';
 import {
   StatCards,
   UsageChart,
@@ -147,6 +149,12 @@ export function UsagePage() {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const isDark = resolvedTheme === 'dark';
   const config = useConfigStore((state) => state.config);
+  const openaiCompatibilityConfig = config?.openaiCompatibility;
+  const [yamlApiKeyNames, setYamlApiKeyNames] = useState<Record<string, string>>({});
+  const [openaiProvidersWithAuthIndex, setOpenaiProvidersWithAuthIndex] = useState<{
+    source: OpenAIProviderConfig[] | undefined;
+    providers: OpenAIProviderConfig[];
+  } | null>(null);
 
   // Data hook
   const {
@@ -170,7 +178,6 @@ export function UsagePage() {
   // Chart lines state
   const [chartLines, setChartLines] = useState<string[]>(loadChartLines);
   const [timeRange, setTimeRange] = useState<UsageTimeRange>(loadTimeRange);
-  const [yamlApiKeyNames, setYamlApiKeyNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -185,6 +192,32 @@ export function UsagePage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const source = openaiCompatibilityConfig;
+
+    providersApi
+      .getOpenAIProviders()
+      .then((providers) => {
+        if (cancelled) return;
+        setOpenaiProvidersWithAuthIndex({ source, providers: providers || [] });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setOpenaiProvidersWithAuthIndex(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [openaiCompatibilityConfig]);
+
+  const openaiProviderState = openaiProvidersWithAuthIndex;
+  const openaiProvidersForUsage =
+    openaiProviderState && openaiProviderState.source === openaiCompatibilityConfig
+      ? openaiProviderState.providers
+      : openaiCompatibilityConfig ?? [];
 
   const timeRangeOptions = useMemo(
     () =>
@@ -266,24 +299,22 @@ export function UsagePage() {
         claudeApiKeys: config?.claudeApiKeys || [],
         codexApiKeys: config?.codexApiKeys || [],
         vertexApiKeys: config?.vertexApiKeys || [],
-        openaiCompatibility: config?.openaiCompatibility || [],
+        openaiCompatibility: openaiProvidersForUsage,
       }),
-    [config, effectiveApiKeyNames]
+    [config, effectiveApiKeyNames, openaiProvidersForUsage]
   );
   const apiStats = useMemo(
     () =>
       getApiStats(filteredUsage, modelPrices).map((stat) => {
         const endpoint = String(stat.endpoint ?? '').trim();
-        if (!endpoint) return stat;
-
-        const directMatched = sourceInfoMap.get(endpoint);
+        const directMatched = sourceInfoMap.bySource.get(endpoint);
         if (directMatched?.displayName) {
           return { ...stat, endpoint: directMatched.displayName };
         }
 
         const normalizedEndpoint = normalizeUsageSourceId(endpoint);
         if (normalizedEndpoint && normalizedEndpoint !== endpoint) {
-          const normalizedMatched = sourceInfoMap.get(normalizedEndpoint);
+          const normalizedMatched = sourceInfoMap.bySource.get(normalizedEndpoint);
           if (normalizedMatched?.displayName) {
             return { ...stat, endpoint: normalizedMatched.displayName };
           }
@@ -451,7 +482,7 @@ export function UsagePage() {
         claudeConfigs={config?.claudeApiKeys || []}
         codexConfigs={config?.codexApiKeys || []}
         vertexConfigs={config?.vertexApiKeys || []}
-        openaiProviders={config?.openaiCompatibility || []}
+        openaiProviders={openaiProvidersForUsage}
       />
 
       {/* Credential Stats */}
@@ -464,7 +495,7 @@ export function UsagePage() {
         claudeConfigs={config?.claudeApiKeys || []}
         codexConfigs={config?.codexApiKeys || []}
         vertexConfigs={config?.vertexApiKeys || []}
-        openaiProviders={config?.openaiCompatibility || []}
+        openaiProviders={openaiProvidersForUsage}
       />
 
       {/* Price Settings */}
