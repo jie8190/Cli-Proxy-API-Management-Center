@@ -321,7 +321,9 @@
   flex: 1 1 auto;
   min-height: 280px;
   max-height: calc(100vh - 320px);
+  height: auto;
   overflow: auto;
+  resize: vertical;
   position: relative;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
@@ -334,9 +336,9 @@
 
   @include mobile {
     min-height: 360px;
+    height: 420px;
     max-height: 480px;
     flex: 0 0 auto;
-    overflow: auto;
   }
 }
 
@@ -761,6 +763,15 @@
   }
 }
 
+@media (max-height: 960px) {
+  @media (min-width: 769px) {
+    .logPanel {
+      min-height: 160px;
+      max-height: calc(100vh - 300px);
+    }
+  }
+}
+
 @media (max-height: 820px) {
   .pageTitle {
     font-size: 24px;
@@ -779,13 +790,25 @@
     gap: $spacing-md;
   }
 
-  .logCard {
-    padding: $spacing-md;
+  @media (min-width: 769px) {
+    .filters {
+      flex: 0 0 auto;
+      gap: $spacing-sm;
+      margin-bottom: $spacing-sm;
+      max-height: 260px;
+      overflow: auto;
+      padding-right: 4px;
+      overscroll-behavior: contain;
+    }
+
+    .logPanel {
+      min-height: 0;
+      max-height: calc(100vh - 280px);
+    }
   }
 
-  .logPanel {
-    min-height: 200px;
-    max-height: calc(100vh - 280px);
+  .logCard {
+    padding: $spacing-md;
   }
 
   .logRow {
@@ -822,13 +845,19 @@
     gap: $spacing-sm;
   }
 
-  .logCard {
-    padding: $spacing-sm;
+  @media (min-width: 769px) {
+    .filters {
+      max-height: 180px;
+    }
+
+    .logPanel {
+      min-height: 0;
+      max-height: calc(100vh - 220px);
+    }
   }
 
-  .logPanel {
-    min-height: 160px;
-    max-height: calc(100vh - 220px);
+  .logCard {
+    padding: $spacing-sm;
   }
 
   .logRow {
