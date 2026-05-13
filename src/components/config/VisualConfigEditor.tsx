@@ -22,7 +22,6 @@ import {
   IconSatellite,
   IconSettings,
   IconShield,
-  IconTimer,
   IconTrendingUp,
   type IconProps,
 } from '@/components/ui/icons';
@@ -51,7 +50,6 @@ type VisualSectionId =
   | 'auth'
   | 'system'
   | 'network'
-  | 'quota'
   | 'streaming'
   | 'payload';
 
@@ -300,13 +298,6 @@ export function VisualConfigEditor({
         description: t('config_management.visual.sections.network.description'),
         icon: IconTrendingUp,
         errorCount: countErrors(['requestRetry', 'maxRetryCredentials', 'maxRetryInterval']),
-      },
-      {
-        id: 'quota',
-        title: t('config_management.visual.sections.quota.title'),
-        description: t('config_management.visual.sections.quota.description'),
-        icon: IconTimer,
-        errorCount: 0,
       },
       {
         id: 'streaming',
@@ -924,48 +915,11 @@ export function VisualConfigEditor({
           </ConfigSection>
 
           <ConfigSection
-            id="quota"
-            ref={(node) => {
-              sectionRefs.current.quota = node;
-            }}
-            indexLabel="07"
-            icon={<IconTimer size={16} />}
-            title={t('config_management.visual.sections.quota.title')}
-            description={t('config_management.visual.sections.quota.description')}
-          >
-            <SectionGrid>
-              <ToggleRow
-                title={t('config_management.visual.sections.quota.switch_project')}
-                description={t('config_management.visual.sections.quota.switch_project_desc')}
-                checked={values.quotaSwitchProject}
-                disabled={disabled}
-                onChange={(quotaSwitchProject) => onChange({ quotaSwitchProject })}
-              />
-              <ToggleRow
-                title={t('config_management.visual.sections.quota.switch_preview_model')}
-                description={t('config_management.visual.sections.quota.switch_preview_model_desc')}
-                checked={values.quotaSwitchPreviewModel}
-                disabled={disabled}
-                onChange={(quotaSwitchPreviewModel) => onChange({ quotaSwitchPreviewModel })}
-              />
-              <ToggleRow
-                title={t('config_management.visual.sections.quota.antigravity_credits')}
-                description={t(
-                  'config_management.visual.sections.quota.antigravity_credits_desc'
-                )}
-                checked={values.quotaAntigravityCredits}
-                disabled={disabled}
-                onChange={(quotaAntigravityCredits) => onChange({ quotaAntigravityCredits })}
-              />
-            </SectionGrid>
-          </ConfigSection>
-
-          <ConfigSection
             id="streaming"
             ref={(node) => {
               sectionRefs.current.streaming = node;
             }}
-            indexLabel="08"
+            indexLabel="07"
             icon={<IconSatellite size={16} />}
             title={t('config_management.visual.sections.streaming.title')}
             description={t('config_management.visual.sections.streaming.description')}
@@ -1066,7 +1020,7 @@ export function VisualConfigEditor({
             ref={(node) => {
               sectionRefs.current.payload = node;
             }}
-            indexLabel="09"
+            indexLabel="08"
             icon={<IconCode size={16} />}
             title={t('config_management.visual.sections.payload.title')}
             description={t('config_management.visual.sections.payload.description')}
